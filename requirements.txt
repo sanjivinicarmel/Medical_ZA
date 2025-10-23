@@ -1,0 +1,10 @@
+streamlit>=1.23.0
+pygpt4all
+streamlit
+pygpt4all
+torch
+transformers
+accelerate
+bitsandbytes
+sentencepiece
+protobuf
