@@ -1,0 +1,20 @@
+# Virtual environment
+venv/
+
+# Streamlit secrets (never upload API keys)
+.streamlit/secrets.toml
+
+# Python cache & compiled files
+__pycache__/
+*.pyc
+
+# Model files (large, not needed on GitHub)
+models/
+*.pt
+*.bin
+*.ckpt
+*.safetensors
+
+# IDE / Editor settings
+.vscode/
+.idea/

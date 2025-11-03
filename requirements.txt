@@ -8,3 +8,6 @@ accelerate
 bitsandbytes
 sentencepiece
 protobuf
+google-generativeai
+groq
+huggingface_hub
