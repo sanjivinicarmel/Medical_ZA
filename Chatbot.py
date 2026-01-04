@@ -1,9 +1,156 @@
-# app.py (cleaned + defensive dedupe of trailing assistant messages)
 import os
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv(".env")
+
+st.set_page_config(page_icon="💊", page_title="Medical Assistant", layout="wide")
+
+# IMPROVED FULL-WIDTH STYLING
+st.markdown("""
+<style>
+/* Force full width container - remove all padding constraints */
+.main .block-container{
+    max-width: 100% !important;
+    padding-top: 0.5rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    padding-bottom: 2rem !important;
+}
+
+/* Full mint background */
+body, .stApp {
+    background-color: #a5e6d5;
+}
+
+/* Remove wrapper constraints - let content stretch */
+.landing-wrapper{
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 0.5rem;
+}
+
+/* NAVY HEADER - Full width */
+.top-box{
+    background: #032B63;
+    color: white;
+    padding: 50px 60px;
+    border-radius: 15px;
+    text-align: center;
+    margin-bottom: 25px;
+    width: 100%;
+}
+
+/* GREEN BOX - Full width */
+.green-box{
+    background: #6FB449;
+    color: white;
+    padding: 45px 60px;
+    border-radius: 15px;
+    margin-bottom: 25px;
+    width: 100%;
+}
+
+/* BLUE BOX - Full width */
+.blue-box{
+    background: #0073B4;
+    color: white;
+    padding: 45px 60px;
+    border-radius: 15px;
+    margin-bottom: 40px;
+    width: 100%;
+}
+
+/* Divider dashed */
+.divider{
+    width: 100%;
+    border-top: 4px dashed #333;
+    margin: 25px 0;
+}
+
+.big-title{
+    font-size: 38px;
+    font-weight: 900;
+    margin-bottom: 15px;
+}
+
+.sub-title{
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 15px;
+}
+
+.text{
+    font-size: 18px;
+    line-height: 1.7;
+}
+
+/* Chat section styling - Full width */
+.consultation-section {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 0.5rem;
+}
+
+/* Ensure Streamlit elements respect the width */
+.stChatInput {
+    max-width: 100% !important;
+}
+
+.stButton button {
+    width: auto;
+    padding: 0.5rem 2rem;
+}
+
+/* Override any Streamlit default margins */
+.element-container {
+    width: 100% !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ---------------- LANDING CONTENT ----------------
+st.markdown("""
+<div class="landing-wrapper">
+
+<div class="top-box">
+<h1 class="big-title">🩺 AI Symptom Intake — Intelligent Clinical Triage Assistant</h1>
+<p class="sub-title">
+From First Symptoms to Structured Clinical Insights — Fast, Accurate, and Context-Aware.
+</p>
+<p class="text">
+Streamline assessment with AI-powered symptom capture, automated triage reasoning,
+and seamless integration into the patient journey.
+</p>
+</div>
+
+<div class="green-box">
+<p class="text">
+This application enables patients to describe their symptoms through an interactive AI chatbot.
+As the conversation progresses, the system captures key clinical details, interprets the patient's inputs,
+and intelligently analyzes the symptom pattern. Using medical reasoning, the chatbot performs a preliminary
+disease shortlisting, offering an early indication of possible conditions before formal diagnosis.
+</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="blue-box">
+<p class="text">
+This section allows patients to describe their symptoms naturally through an AI-powered chatbot.
+The assistant engages in a guided conversation, asks clarifying questions, and captures clinically
+relevant details in real time. By analyzing the dialogue, the system identifies key symptom patterns
+and performs an initial shortlisting of possible conditions. This conversational approach transforms
+free-text patient inputs into structured clinical insights, forming the first step of the AI-driven
+patient journey.
+</p>
+</div>
+
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------------------
 # API keys (Streamlit secrets or .env)
@@ -12,7 +159,7 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
 # ---------------------------
-# Gemini + Groq helpers (kept from your code)
+# Gemini + Groq helpers
 # ---------------------------
 import google.generativeai as genai
 from groq import Groq, PermissionDeniedError, APIConnectionError
@@ -43,22 +190,21 @@ def ensure_groq():
 
 
 # ---------------------------
-# System prompt: conversational + ask a short follow-up question at the end
+# System Prompt
 # ---------------------------
 SYSTEM_PROMPT = (
-    "You are a friendly, helpful medical chat assistant. Speak naturally like ChatGPT.\n"
-    "Guidelines:\n"
-    "- Use conversational language (short paragraphs or bullets if needed).\n"
-    "- Ask 1 short, gentle clarifying question at the end of your reply to invite more details,\n"
-    "  e.g. 'Can you tell me more about your symptoms?' or 'When did this start?'.\n"
-    "- Offer simple non-prescriptive suggestions when appropriate.\n"
-    "- Recommend seeing a doctor only if symptoms are severe, sudden, spreading, or persistent.\n"
-    "- Never give a formal medical diagnosis or prescribe medication.\n"
-    "- If health advice is discussed, end with: 'This is general information and not a substitute for professional medical advice.'\n"
+    "You are a friendly, helpful medical chat assistant.\n"
+    "- Use simple language\n"
+    "- Never diagnose\n"
+    "- Give helpful suggestions\n"
+    "- Ask one gentle follow-up question\n"
+    "- Recommend doctor only if severe/persistent\n"
+    "- End with: 'This is general information and not a substitute for professional medical advice.'"
 )
 
+
 # ---------------------------
-# Model call helpers using message history
+# Model Wrappers
 # ---------------------------
 def chat_with_gemini_messages(messages: list) -> str:
     model = ensure_gemini()
@@ -88,17 +234,9 @@ def chat_with_groq_messages(messages: list) -> str:
         )
         return str(resp.choices[0].message.content).strip()
     except PermissionDeniedError:
-        return (
-            "I couldn't reach the Groq model due to a permission issue. "
-            "Try switching the model or network. "
-            "This is general information and not a substitute for professional medical advice."
-        )
+        return "Groq permission issue."
     except APIConnectionError:
-        return (
-            "I couldn't connect to Groq due to a connectivity error. "
-            "Please try again later. "
-            "This is general information and not a substitute for professional medical advice."
-        )
+        return "Groq network error."
 
 
 def generate_reply(model_choice: str, messages: list) -> str:
@@ -108,161 +246,152 @@ def generate_reply(model_choice: str, messages: list) -> str:
 
 
 # ---------------------------
-# Defensive dedupe utilities
+# Utility
 # ---------------------------
-def dedupe_consecutive_assistant_messages(messages: list, keep_last_n=1) -> list:
-    """
-    Removes extra identical consecutive assistant messages at the end of the list,
-    keeping at most `keep_last_n` copies of the identical trailing assistant message.
-    Also collapses any immediate consecutive duplicates throughout the list.
-    """
-    if not messages:
-        return messages
-
-    # First, collapse any immediate consecutive duplicates throughout the list
-    collapsed = []
-    prev = None
-    for m in messages:
-        if prev and m["role"] == "assistant" and prev["role"] == "assistant" and m["content"] == prev["content"]:
-            # skip duplicate assistant message immediately following an identical assistant
-            continue
-        collapsed.append(m)
-        prev = m
-
-    # Then ensure the trailing assistant messages are at most keep_last_n copies
-    # (rare case, but safe)
-    # Count trailing assistant messages with identical content
-    i = len(collapsed) - 1
-    if i >= 0 and collapsed[i]["role"] == "assistant":
-        last_content = collapsed[i]["content"]
-        count = 1
-        j = i - 1
-        while j >= 0 and collapsed[j]["role"] == "assistant" and collapsed[j]["content"] == last_content:
-            count += 1
-            j -= 1
-        if count > keep_last_n:
-            # remove extras
-            to_remove = count - keep_last_n
-            for _ in range(to_remove):
-                collapsed.pop()
-
-    return collapsed
+def ask_model(model_choice: str, system_prompt: str, user_prompt: str):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    return generate_reply(model_choice, messages)
 
 
 # ---------------------------
-# Streamlit UI: chat-like flow
+# Streamlit UI
 # ---------------------------
-st.set_page_config(page_title="Medical Chat Assistant", page_icon="💊")
-st.title("💊 Medical Chat Assistant")
-st.write(
-    "Ask general questions about symptoms or home care. "
-    "**This is not a replacement for a doctor.**"
-)
+#st.set_page_config(page_title="Start Your Consultation", page_icon="💊")
+st.markdown('<div class="landing-wrapper">', unsafe_allow_html=True)
+st.title("💊 Start Your Consulatation Here")
+st.write("Ask general questions about symptoms or home care. **This is not a replacement for a doctor.**")
 
-model_choice = st.sidebar.selectbox("Choose model", ("Gemini", "Groq (Llama)"))
-st.sidebar.markdown("### About")
-st.sidebar.write(
-    "- Conversational assistant\n"
-    "- Asks clarifying questions when needed\n"
-    "- Provides general information only"
-)
+# model_choice = st.sidebar.selectbox("Choose model", ("Gemini", "Groq (Llama)"))
 
-# Initialize messages if missing
+# ---------------- Session State ----------------
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-# Defensive dedupe on load (prevents showing past duplicate replies)
-st.session_state["messages"] = dedupe_consecutive_assistant_messages(st.session_state["messages"], keep_last_n=1)
+# TRIAGE STATES
+if "show_triage" not in st.session_state:
+    st.session_state.show_triage = False
 
-# Reset conversation
-if st.sidebar.button("Reset conversation"):
-    st.session_state["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+if "triage_questions" not in st.session_state:
+    st.session_state.triage_questions = []
 
-# Render chat using st.chat_message if available, otherwise markdown fallback
-use_chat_api = hasattr(st, "chat_message")
-
-
-def render_messages(messages):
-    # skip system message when rendering
-    for m in messages:
-        if m["role"] == "system":
-            continue
-        if use_chat_api:
-            with st.chat_message("user" if m["role"] == "user" else "assistant"):
-                st.write(m["content"])
-        else:
-            if m["role"] == "user":
-                st.markdown(f"**You:** {m['content']}")
-            else:
-                st.markdown(f"**Assistant:**  \n{m['content']}")
+if "triage_answers" not in st.session_state:
+    st.session_state.triage_answers = []
 
 
-# Render existing conversation
-render_messages(st.session_state["messages"])
+# ---------------- Render Chat ----------------
+for m in st.session_state["messages"]:
+    if m["role"] == "system":
+        continue
+    with st.chat_message("user" if m["role"] == "user" else "assistant"):
+        st.write(m["content"])
 
 st.markdown("---")
 
+# ---------------- Chat Input ----------------
+col1, col2 = st.columns([3,1])
 
-# Utility: detect if assistant reply already contains a follow-up question
-def ends_with_question(text: str) -> bool:
-    text = text.strip()
-    if text.endswith("?"):
-        return True
-    lowered = text.lower()
-    for phrase in ("tell me more", "can you tell", "could you tell", "please describe", "please tell"):
-        if phrase in lowered:
-            return True
-    return False
+with col1:
+    st.markdown("### Start Your Consultation")
 
-
-# Chat input form: empty on render and cleared on submit
-with st.form("chat_form", clear_on_submit=True):
-    user_text = st.text_area(
-        "Type your message here:",
-        value="",
-        height=120,
-        placeholder="e.g. I applied Dettol on my skin — will it help?",
-        key="user_input",
+with col2:
+    model_choice = st.selectbox(
+        "Choose Model",
+        ("Gemini", "Groq (Llama)"),
+        index=0
     )
-    submitted = st.form_submit_button("Send")
 
-if submitted:
-    if not user_text or not user_text.strip():
-        st.warning("Please type a message.")
-    else:
-        # Append the user's message to history (once)
-        st.session_state["messages"].append({"role": "user", "content": user_text.strip()})
+user_input = st.chat_input("Describe your symptoms...")
 
-        # Generate assistant reply using full history
-        with st.spinner("Thinking..."):
-            try:
-                assistant_reply = generate_reply(model_choice, st.session_state["messages"])
-            except Exception:
-                assistant_reply = (
-                    "Sorry — I couldn't reach the model right now. "
-                    "Please try again in a moment."
-                )
+if user_input:
+    # user message
+    st.session_state["messages"].append({"role": "user", "content": user_input})
+    st.session_state.show_triage = False
+    st.session_state.triage_questions = []
+    st.session_state.triage_answers = []
+    st.session_state.triage_id = str(len(st.session_state["messages"]))
 
-        # Ensure assistant reply includes a friendly follow-up question
-        if not ends_with_question(assistant_reply):
-            if "this is general information" in assistant_reply.lower():
-                parts = assistant_reply.rsplit("\n", 1)
-                if len(parts) == 2 and "this is general information" in parts[-1].lower():
-                    assistant_reply = (
-                        parts[0].rstrip()
-                        + "\n\nCould you tell me a bit more about your symptoms "
-                        "(when they started, severity, and any other symptoms)?\n\n"
-                        + parts[1]
-                    )
-                else:
-                    assistant_reply = assistant_reply.rstrip() + "\n\nCould you tell me a bit more about your symptoms (when they started, severity, and any other symptoms)?"
-            else:
-                assistant_reply = assistant_reply.rstrip() + "\n\nCould you tell me a bit more about your symptoms (when they started, severity, and any other symptoms)?"
+    # assistant response
+    with st.spinner("Thinking..."):
+        reply = generate_reply(model_choice, st.session_state["messages"])
 
-        # Prevent duplicate appends: add assistant reply only if it's not already the last assistant message
-        last_msg = st.session_state["messages"][-1] if st.session_state["messages"] else None
-        if not (last_msg and last_msg.get("role") == "assistant" and last_msg.get("content") == assistant_reply):
-            st.session_state["messages"].append({"role": "assistant", "content": assistant_reply})
+    st.session_state["messages"].append({"role": "assistant", "content": reply})
+    st.session_state.last_assistant_reply = reply
 
-# UX hint
-st.caption("Tip: after the assistant asks a follow-up question, use the same box to reply (this keeps the conversation flowing).")
+
+    # trigger triage
+    st.session_state.show_triage = True
+    st.rerun()
+
+
+
+# ---------------- TRIAGE REPORT BUTTON ----------------
+if "last_assistant_reply" in st.session_state and st.session_state.last_assistant_reply:
+
+    if st.button("🩺 Generate Triage Report"):
+        st.session_state.generate_triage = True
+
+
+# ---------------- TRIAGE GENERATION ----------------
+if st.session_state.get("generate_triage", False):
+
+    # Extract latest user symptom
+    user_symptom = ""
+    for m in reversed(st.session_state["messages"]):
+        if m["role"] == "user":
+            user_symptom = m["content"]
+            break
+
+    triage_prompt = f"""
+You are a professional clinical triage assistant.
+
+Based on the conversation below, generate a structured TRIAGE REPORT.
+
+Patient Statement:
+{user_symptom}
+
+Assistant Explanation:
+{st.session_state.last_assistant_reply}
+
+Your Output MUST be in this exact structure:
+
+### 🩺 AI Triage Summary
+• 2–3 sentence summary of situation
+
+### ⚠️ Risk Level
+One of:
+LOW | MODERATE | HIGH | EMERGENCY
+
+### 🔍 Key Symptoms Detected
+- Bullet list
+
+### 🏠 Suggested Home Remedies (if safe)
+- Bullet list
+
+### 👨‍⚕️ When to See a Doctor
+Short guidance
+
+### 🚑 Emergency Indicators
+Clear bullet list of red flags
+
+Be responsible, do NOT diagnose diseases.
+"""
+
+    triage_result = generate_reply(
+        model_choice,
+        [
+            {"role": "system", "content": "You are an expert hospital clinical triage system. Be clear, calm, medically safe, responsible, and structured."},
+            {"role": "user", "content": triage_prompt},
+        ],
+    )
+
+    st.markdown("### 🩻 Triage Report")
+    st.info(triage_result)
+    st.warning("⚠️ This tool is for informational purposes only and not a medical diagnosis.")
+
+
+
+# 🔽 CLOSE layout wrapper
+st.markdown('</div>', unsafe_allow_html=True)
