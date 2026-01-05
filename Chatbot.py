@@ -75,6 +75,45 @@ body, .stApp {
     margin-bottom: 15px;
 }
 
+.triage-header {
+    font-size: 28px;
+    font-weight: 800;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    color: #1f2937;
+}
+
+.triage-info-box {
+    background: #e9f8f4;
+    border-left: 6px solid #0073B4;
+    padding: 20px 24px;
+    border-radius: 14px;
+    margin-bottom: 24px;
+    line-height: 1.6;
+    font-size: 17px;
+}
+                        
+            
+/* AI response card */
+.ai-response-box {
+    background: #e9f8f4;
+    border-left: 6px solid #0073B4;
+    padding: 18px 22px;
+    border-radius: 12px;
+    margin: 16px 0;
+    line-height: 1.6;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* User message card (optional, lighter) */
+.user-message-box {
+    background: #dff3ee;
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin: 12px 0;
+}
+
+
 .sub-title{
     font-size: 24px;
     font-weight: 700;
@@ -108,6 +147,64 @@ body, .stApp {
 .element-container {
     width: 100% !important;
 }
+            
+/* TRIAGE HEADER (Dark Blue) */
+.triage-title-box{
+    background:#032B63;
+    color:white;
+    padding:28px 32px;
+    border-radius:18px;
+    font-size:26px;
+    font-weight:800;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-top:40px;
+}
+
+/* TRIAGE DESCRIPTION BOX (Blue) */
+.triage-desc-box{
+    background:#0073B4;
+    color:white;
+    padding:28px 32px;
+    border-radius:18px;
+    font-size:17px;
+    line-height:1.7;
+    margin-top:18px;
+}
+
+/* Make text bold highlights readable */
+.triage-desc-box b{
+    font-weight:700;
+}
+
+/* Chat input wrapper */
+.chat-section {
+    background: #aef0df;
+    padding: 30px;
+    border-radius: 18px;
+    margin-top: 30px;
+}
+
+/* Chat input label */
+.chat-title {
+    font-size: 26px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    color: #1f2d3d;
+}
+
+/* Chat subtitle */
+.chat-subtitle {
+    font-size: 15px;
+    margin-bottom: 16px;
+    color: #2c3e50;
+}
+
+/* Slight spacing fix */
+section[data-testid="stChatInput"] {
+    margin-top: 0px;
+}            
 </style>
 """, unsafe_allow_html=True)
 
@@ -285,10 +382,26 @@ if "triage_answers" not in st.session_state:
 for m in st.session_state["messages"]:
     if m["role"] == "system":
         continue
-    with st.chat_message("user" if m["role"] == "user" else "assistant"):
-        st.write(m["content"])
 
-st.markdown("---")
+    if m["role"] == "user":
+        st.markdown(
+            f"""
+            <div class="user-message-box">
+                {m["content"]}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"""
+            <div class="ai-response-box">
+                {m["content"]}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 # ---------------- Chat Input ----------------
 col1, col2 = st.columns([3,1])
@@ -327,6 +440,31 @@ if user_input:
 
 
 
+# ---------------- TRIAGE INTRO SECTION ----------------
+# ---------------- TRIAGE INTRO SECTION ----------------
+if "last_assistant_reply" in st.session_state and st.session_state.last_assistant_reply:
+
+    st.markdown("""
+<div class="triage-title-box">
+    🩺 Intelligent Clinical Triage Assistant
+</div>
+
+<div class="triage-desc-box">
+    This triage is designed to help you understand the <b>next appropriate steps</b>
+    based on your symptoms.
+    <br><br>
+    It does not diagnose conditions, but provides guidance on
+    <b>severity</b>, <b>self-care options</b>, <b>when to consult a doctor</b>,
+    and <b>warning signs</b> that may need urgent medical attention.
+    <br><br>
+    The goal is to support informed decision-making, reduce unnecessary anxiety,
+    and help you seek the <b>right level of care at the right time</b>.
+</div>
+""", unsafe_allow_html=True)
+
+
+
+
 # ---------------- TRIAGE REPORT BUTTON ----------------
 if "last_assistant_reply" in st.session_state and st.session_state.last_assistant_reply:
 
@@ -344,40 +482,77 @@ if st.session_state.get("generate_triage", False):
             user_symptom = m["content"]
             break
 
-    triage_prompt = f"""
-You are a professional clinical triage assistant.
+    triage_prompt = triage_prompt = f"""
+You are an experienced clinical triage assistant.
 
-Based on the conversation below, generate a structured TRIAGE REPORT.
+Your role is NOT to diagnose diseases.
+Your role is to guide patients on what to do next in a safe, practical, and reassuring manner.
 
-Patient Statement:
+Think like a doctor explaining next steps to a patient in simple language.
+
+-------------------------
+PATIENT CONTEXT
+-------------------------
+Patient Message:
 {user_symptom}
 
 Assistant Explanation:
 {st.session_state.last_assistant_reply}
 
-Your Output MUST be in this exact structure:
+-------------------------
+TRIAGE INSTRUCTIONS
+-------------------------
+1. Do NOT diagnose or name diseases.
+2. Use simple, non-technical language.
+3. Include ONLY sections that are relevant to this case.
+4. If symptoms are mild, focus on reassurance and home care.
+5. If symptoms are moderate, focus on monitoring and doctor consultation.
+6. If symptoms are severe, clearly emphasize urgency and emergency care.
+7. Home remedies and OTC advice should be conservative and optional.
+8. Never give medication dosages or prescription drugs.
+9. Patient safety is the top priority.
 
-### 🩺 AI Triage Summary
-• 2–3 sentence summary of situation
+-------------------------
+OUTPUT FORMAT
+-------------------------
 
-### ⚠️ Risk Level
-One of:
-LOW | MODERATE | HIGH | EMERGENCY
+🩺 Triage Summary  
+- 2–3 sentences summarizing the situation in plain language.
 
-### 🔍 Key Symptoms Detected
-- Bullet list
+⚠️ Risk Level  
+- One of: LOW | MODERATE | HIGH | EMERGENCY  
+- Add one short line explaining why.
 
-### 🏠 Suggested Home Remedies (if safe)
-- Bullet list
+🔍 Key Symptoms Observed  
+- Bullet list of important symptoms mentioned or implied.
 
-### 👨‍⚕️ When to See a Doctor
-Short guidance
+🏠 Home Care / Self-Care (ONLY if appropriate)  
+- Simple actions the patient can take now.
 
-### 🚑 Emergency Indicators
-Clear bullet list of red flags
+💊 OTC Options (Optional)  
+- Mention only general categories if appropriate.
+- No dosages, no brand names.
 
-Be responsible, do NOT diagnose diseases.
+👨‍⚕️ When to See a Doctor  
+- Clear guidance with timeframes or symptom progression.
+
+🚑 Emergency Warning Signs  
+- Red-flag symptoms that require urgent medical attention.
+- Include ONLY if there is realistic emergency risk.
+
+📌 What to Avoid (Optional)  
+- Actions that could worsen the condition.
+
+🕒 Monitoring Advice (Optional)  
+- What the patient should watch for over the next hours or days.
+
+-------------------------
+FINAL SAFETY LINE (MANDATORY)
+-------------------------
+End with:
+"This information is for general guidance only and not a substitute for professional medical care."
 """
+
 
     triage_result = generate_reply(
         model_choice,
