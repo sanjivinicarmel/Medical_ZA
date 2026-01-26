@@ -367,6 +367,9 @@ st.write("Ask general questions about symptoms or home care. **This is not a rep
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
+if "user_word_count" not in st.session_state:
+    st.session_state.user_word_count = 0
+
 # TRIAGE STATES
 if "show_triage" not in st.session_state:
     st.session_state.show_triage = False
@@ -402,6 +405,26 @@ for m in st.session_state["messages"]:
             unsafe_allow_html=True
         )
 
+# ---------------- TRIAGE READINESS INDICATOR ----------------
+TRIAGE_WORD_THRESHOLD = 50
+
+current_words = st.session_state.get("user_word_count", 0)
+progress = min(current_words / TRIAGE_WORD_THRESHOLD, 1.0)
+
+st.markdown("### 🧭 Triage Readiness")
+
+st.progress(progress)
+
+if current_words < TRIAGE_WORD_THRESHOLD:
+    st.info(
+        f"📝 Gathering symptom details: **{current_words} / {TRIAGE_WORD_THRESHOLD} words collected**\n\n"
+        "Continue describing your symptoms so the assistant can understand your condition fully "
+        "before generating a clinical triage."
+    )
+else:
+    st.success(
+        "✅ Enough information collected. You can now generate a detailed clinical triage report."
+    )
 
 # ---------------- Chat Input ----------------
 col1, col2 = st.columns([3,1])
@@ -419,8 +442,14 @@ with col2:
 user_input = st.chat_input("Describe your symptoms...")
 
 if user_input:
-    # user message
-    st.session_state["messages"].append({"role": "user", "content": user_input})
+    # 🔹 STEP 2: count user words
+    word_count = len(user_input.split())
+    st.session_state.user_word_count += word_count
+
+    # store user message (NO change in logic)
+    st.session_state["messages"].append(
+        {"role": "user", "content": user_input}
+    )
     st.session_state.show_triage = False
     st.session_state.triage_questions = []
     st.session_state.triage_answers = []
@@ -435,45 +464,49 @@ if user_input:
 
 
     # trigger triage
-    st.session_state.show_triage = True
+    #st.session_state.show_triage = True
     st.rerun()
 
 
 
+
 # ---------------- TRIAGE INTRO SECTION ----------------
-# ---------------- TRIAGE INTRO SECTION ----------------
-if "last_assistant_reply" in st.session_state and st.session_state.last_assistant_reply:
+# ---------------- TRIAGE INTRO + BUTTON ----------------
+TRIAGE_WORD_THRESHOLD = 50
+
+if (
+    "last_assistant_reply" in st.session_state
+    and st.session_state.last_assistant_reply
+    and st.session_state.user_word_count >= TRIAGE_WORD_THRESHOLD
+):
 
     st.markdown("""
-<div class="triage-title-box">
-    🩺 Intelligent Clinical Triage Assistant
-</div>
+    <div class="triage-title-box">
+        🩺 Intelligent Clinical Triage Assistant
+    </div>
 
-<div class="triage-desc-box">
-    This triage is designed to help you understand the <b>next appropriate steps</b>
-    based on your symptoms.
-    <br><br>
-    It does not diagnose conditions, but provides guidance on
-    <b>severity</b>, <b>self-care options</b>, <b>when to consult a doctor</b>,
-    and <b>warning signs</b> that may need urgent medical attention.
-    <br><br>
-    The goal is to support informed decision-making, reduce unnecessary anxiety,
-    and help you seek the <b>right level of care at the right time</b>.
-</div>
-""", unsafe_allow_html=True)
-
-
-
-
-# ---------------- TRIAGE REPORT BUTTON ----------------
-if "last_assistant_reply" in st.session_state and st.session_state.last_assistant_reply:
+    <div class="triage-desc-box">
+        This triage is designed to help you understand the <b>next appropriate steps</b>
+        based on your symptoms.
+        <br><br>
+        It does not diagnose conditions, but provides guidance on
+        <b>severity</b>, <b>self-care options</b>, <b>when to consult a doctor</b>,
+        and <b>warning signs</b> that may need urgent medical attention.
+        <br><br>
+        The goal is to support informed decision-making, reduce unnecessary anxiety,
+        and help you seek the <b>right level of care at the right time</b>.
+    </div>
+    """, unsafe_allow_html=True)
 
     if st.button("🩺 Generate Triage Report"):
         st.session_state.generate_triage = True
 
 
 # ---------------- TRIAGE GENERATION ----------------
-if st.session_state.get("generate_triage", False):
+if (
+    st.session_state.get("generate_triage", False)
+    and st.session_state.user_word_count >= TRIAGE_WORD_THRESHOLD
+):
 
     # Extract latest user symptom
     user_symptom = ""
@@ -482,7 +515,7 @@ if st.session_state.get("generate_triage", False):
             user_symptom = m["content"]
             break
 
-    triage_prompt = triage_prompt = f"""
+    triage_prompt = f"""
 You are an experienced clinical triage assistant.
 
 Your role is NOT to diagnose diseases.
@@ -503,61 +536,77 @@ Assistant Explanation:
 TRIAGE INSTRUCTIONS
 -------------------------
 1. Do NOT diagnose or name diseases.
-2. Use simple, non-technical language.
+2. Use simple, non-technical, reassuring language.
 3. Include ONLY sections that are relevant to this case.
-4. If symptoms are mild, focus on reassurance and home care.
-5. If symptoms are moderate, focus on monitoring and doctor consultation.
-6. If symptoms are severe, clearly emphasize urgency and emergency care.
-7. Home remedies and OTC advice should be conservative and optional.
-8. Never give medication dosages or prescription drugs.
-9. Patient safety is the top priority.
+4. If symptoms are mild:
+   - Emphasize reassurance, self-care, and home-based recovery.
+5. If symptoms are moderate:
+   - Emphasize monitoring, supportive care, and when to consider medical advice.
+6. If symptoms are severe:
+   - Clearly explain urgency while maintaining a calm and supportive tone.
+7. Provide practical, actionable recommendations the patient can realistically follow at home.
+8. Home remedies and OTC advice must be conservative, optional, and non-prescriptive.
+9. NEVER give medication dosages or prescription drugs.
+10. Avoid alarming language; focus on reducing anxiety and empowering the patient.
+11. Patient safety is the top priority at all times.
+
+-------------------------
+FORMATTING RULES (MANDATORY)
+-------------------------
+- Each section title MUST appear on its own line.
+- Content MUST begin on the next line after the title.
+- Use bullet points (-) for all content under each section.
+- NEVER place sentences on the same line as a section title.
+- Do NOT merge headings and sentences.
+- Keep sections visually clean and easy to scan.
+
 
 -------------------------
 OUTPUT FORMAT
 -------------------------
 
-🩺 Triage Summary  
-- 2–3 sentences summarizing the situation in plain language.
+🩺 Triage Summary
+- 2–3 sentences in plain language.
 
-⚠️ Risk Level  
-- One of: LOW | MODERATE | HIGH | EMERGENCY  
-- Add one short line explaining why.
+⚠️ Overall Assessment
+- LOW | MODERATE | NEEDS MEDICAL REVIEW
+- One calm sentence explaining why.
 
-🔍 Key Symptoms Observed  
-- Bullet list of important symptoms mentioned or implied.
+🔍 Key Symptoms Observed
+- Bullet list only.
 
-🏠 Home Care / Self-Care (ONLY if appropriate)  
-- Simple actions the patient can take now.
+🏠 Home Care & Natural Remedies (if appropriate)
+- Bullet list of practical actions.
 
-💊 OTC Options (Optional)  
-- Mention only general categories if appropriate.
-- No dosages, no brand names.
+💊 Optional Relief Measures (Optional)
+- Bullet list.
+- No dosages.
 
-👨‍⚕️ When to See a Doctor  
-- Clear guidance with timeframes or symptom progression.
+💙 Reassurance
+- 1–2 calming, validating sentences.
 
-🚑 Emergency Warning Signs  
-- Red-flag symptoms that require urgent medical attention.
-- Include ONLY if there is realistic emergency risk.
+🕒 What to Expect Over the Next 24–72 Hours
+- Bullet list describing normal progression.
 
-📌 What to Avoid (Optional)  
-- Actions that could worsen the condition.
+🔔 Important Changes to Watch For
+- Bullet list.
+- Use calm language (no panic).
 
-🕒 Monitoring Advice (Optional)  
-- What the patient should watch for over the next hours or days.
+
 
 -------------------------
 FINAL SAFETY LINE (MANDATORY)
 -------------------------
-End with:
 "This information is for general guidance only and not a substitute for professional medical care."
 """
-
 
     triage_result = generate_reply(
         model_choice,
         [
-            {"role": "system", "content": "You are an expert hospital clinical triage system. Be clear, calm, medically safe, responsible, and structured."},
+            {
+                "role": "system",
+                "content": "You are an expert hospital clinical triage system. Be clear, calm, medically safe, responsible, and structured."
+            },
             {"role": "user", "content": triage_prompt},
         ],
     )
@@ -565,8 +614,3 @@ End with:
     st.markdown("### 🩻 Triage Report")
     st.info(triage_result)
     st.warning("⚠️ This tool is for informational purposes only and not a medical diagnosis.")
-
-
-
-# 🔽 CLOSE layout wrapper
-st.markdown('</div>', unsafe_allow_html=True)
