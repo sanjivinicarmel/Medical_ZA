@@ -1,10 +1,40 @@
 import os
+#from requests import session
 import streamlit as st
 from dotenv import load_dotenv
+import json
+import uuid
+import os
+
+TRIAGE_DIR = "triage_sessions"
+os.makedirs(TRIAGE_DIR, exist_ok=True)
 
 load_dotenv(".env")
 
 st.set_page_config(page_icon="💊", page_title="Medical Assistant", layout="wide")
+
+# ---------------------------
+# System Prompt
+# ---------------------------
+SYSTEM_PROMPT = (
+    "You are a friendly, helpful medical chat assistant.\n"
+    "- Use simple language\n"
+    "- Never diagnose\n"
+    "- Give helpful suggestions\n"
+    "- Ask one gentle follow-up question\n"
+    "- Recommend doctor only if severe/persistent\n"
+    "- End with: 'This is general information and not a substitute for professional medical advice.'"
+)
+
+# ---------------- Session State ----------------
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+if "user_word_count" not in st.session_state:
+    st.session_state.user_word_count = 0
+
+if "show_intro" not in st.session_state:
+    st.session_state.show_intro = True
 
 # IMPROVED FULL-WIDTH STYLING
 st.markdown("""
@@ -214,7 +244,7 @@ st.markdown("""
 <div class="landing-wrapper">
 
 <div class="top-box">
-<h1 class="big-title">🩺 AI Symptom Intake — Intelligent Clinical Triage Assistant</h1>
+<h1 class="big-title">🩺 AI Symptom Intake</h1>
 <p class="sub-title">
 From First Symptoms to Structured Clinical Insights — Fast, Accurate, and Context-Aware.
 </p>
@@ -287,20 +317,6 @@ def ensure_groq():
 
 
 # ---------------------------
-# System Prompt
-# ---------------------------
-SYSTEM_PROMPT = (
-    "You are a friendly, helpful medical chat assistant.\n"
-    "- Use simple language\n"
-    "- Never diagnose\n"
-    "- Give helpful suggestions\n"
-    "- Ask one gentle follow-up question\n"
-    "- Recommend doctor only if severe/persistent\n"
-    "- End with: 'This is general information and not a substitute for professional medical advice.'"
-)
-
-
-# ---------------------------
 # Model Wrappers
 # ---------------------------
 def chat_with_gemini_messages(messages: list) -> str:
@@ -358,17 +374,43 @@ def ask_model(model_choice: str, system_prompt: str, user_prompt: str):
 # ---------------------------
 #st.set_page_config(page_title="Start Your Consultation", page_icon="💊")
 st.markdown('<div class="landing-wrapper">', unsafe_allow_html=True)
-st.title("💊 Start Your Consulatation Here")
-st.write("Ask general questions about symptoms or home care. **This is not a replacement for a doctor.**")
+if st.session_state.show_intro:
+    st.title("💊 Start Your Consulatation Here")
+    st.write(
+        "Ask general questions about symptoms or home care. "
+        "**This is not a replacement for a doctor.**"
+    )
+
+# ---------------- PATIENT SELECTION (STEP 2) ----------------
+import pandas as pd
+
+PATIENT_FILE = "patients.csv"
+
+if os.path.exists(PATIENT_FILE):
+    patients_df = pd.read_csv(PATIENT_FILE)
+
+    st.markdown("### 👤 Select Patient for This Consultation")
+
+    selected_patient = st.selectbox(
+        "Choose Patient",
+        patients_df["patient_name"]
+    )
+
+    # Get selected patient row
+    selected_row = patients_df[
+        patients_df["patient_name"] == selected_patient
+    ].iloc[0]
+
+    # Store in session_state
+    st.session_state.selected_patient_id = int(selected_row["patient_id"])
+    st.session_state.selected_patient_name = selected_row["patient_name"]
+    st.session_state.selected_patient_age = selected_row["age"]
+    st.session_state.selected_patient_sex = selected_row["sex"]
+
+else:
+    st.error("❌ patients.csv not found.")
 
 # model_choice = st.sidebar.selectbox("Choose model", ("Gemini", "Groq (Llama)"))
-
-# ---------------- Session State ----------------
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-if "user_word_count" not in st.session_state:
-    st.session_state.user_word_count = 0
 
 # TRIAGE STATES
 if "show_triage" not in st.session_state:
@@ -406,31 +448,32 @@ for m in st.session_state["messages"]:
         )
 
 # ---------------- TRIAGE READINESS INDICATOR ----------------
-TRIAGE_WORD_THRESHOLD = 50
+TRIAGE_WORD_THRESHOLD = 500
 
 current_words = st.session_state.get("user_word_count", 0)
 progress = min(current_words / TRIAGE_WORD_THRESHOLD, 1.0)
 
-st.markdown("### 🧭 Triage Readiness")
+#st.markdown("### 🧭 Triage Readiness")
 
-st.progress(progress)
+#st.progress(progress)
 
-if current_words < TRIAGE_WORD_THRESHOLD:
-    st.info(
-        f"📝 Gathering symptom details: **{current_words} / {TRIAGE_WORD_THRESHOLD} words collected**\n\n"
-        "Continue describing your symptoms so the assistant can understand your condition fully "
-        "before generating a clinical triage."
-    )
-else:
-    st.success(
-        "✅ Enough information collected. You can now generate a detailed clinical triage report."
-    )
+#if current_words < TRIAGE_WORD_THRESHOLD:
+    #st.info(
+       # f"📝 Gathering symptom details: **{current_words} / {TRIAGE_WORD_THRESHOLD} words collected**\n\n"
+        #"Continue describing your symptoms so the assistant can understand your condition fully "
+        #"before generating a clinical triage."
+    #)
+#else:
+   # st.success(
+       # "✅ Enough information collected. You can now generate a detailed clinical triage report."
+    # )
 
 # ---------------- Chat Input ----------------
 col1, col2 = st.columns([3,1])
 
 with col1:
-    st.markdown("### Start Your Consultation")
+    if st.session_state.show_intro:
+        st.markdown("### Start Your Consultation")
 
 with col2:
     model_choice = st.selectbox(
@@ -450,6 +493,7 @@ if user_input:
     st.session_state["messages"].append(
         {"role": "user", "content": user_input}
     )
+    st.session_state.show_intro = False
     st.session_state.show_triage = False
     st.session_state.triage_questions = []
     st.session_state.triage_answers = []
@@ -468,11 +512,8 @@ if user_input:
     st.rerun()
 
 
-
-
-# ---------------- TRIAGE INTRO SECTION ----------------
 # ---------------- TRIAGE INTRO + BUTTON ----------------
-TRIAGE_WORD_THRESHOLD = 50
+TRIAGE_WORD_THRESHOLD = 500
 
 if (
     "last_assistant_reply" in st.session_state
@@ -480,137 +521,61 @@ if (
     and st.session_state.user_word_count >= TRIAGE_WORD_THRESHOLD
 ):
 
-    st.markdown("""
-    <div class="triage-title-box">
-        🩺 Intelligent Clinical Triage Assistant
-    </div>
+   
+    # 🔘 Button (ONLY shown when ready)
+    if st.button("🩺 Assess My Triage Summary"):
 
-    <div class="triage-desc-box">
-        This triage is designed to help you understand the <b>next appropriate steps</b>
-        based on your symptoms.
-        <br><br>
-        It does not diagnose conditions, but provides guidance on
-        <b>severity</b>, <b>self-care options</b>, <b>when to consult a doctor</b>,
-        and <b>warning signs</b> that may need urgent medical attention.
-        <br><br>
-        The goal is to support informed decision-making, reduce unnecessary anxiety,
-        and help you seek the <b>right level of care at the right time</b>.
-    </div>
-    """, unsafe_allow_html=True)
+        # 🔹 Create session_id ONCE
+        if "session_id" not in st.session_state:
+            st.session_state.session_id = str(uuid.uuid4())
 
-    if st.button("🩺 Generate Triage Report"):
-        st.session_state.generate_triage = True
+        triage_payload = {
+            "messages": st.session_state["messages"],
+            "last_assistant_reply": st.session_state["last_assistant_reply"],
+            "model_choice": model_choice,
+            "user_word_count": st.session_state["user_word_count"],
+            "patient_id": int(st.session_state.selected_patient_id),
+            "patient_name": str(st.session_state.selected_patient_name),
+            "patient_age": int(st.session_state.selected_patient_age),
+            "patient_sex": str(st.session_state.selected_patient_sex)
+    }
 
+        file_path = os.path.join(
+            TRIAGE_DIR,
+            f"{st.session_state.session_id}.json"
+        )
 
-# ---------------- TRIAGE GENERATION ----------------
-if (
-    st.session_state.get("generate_triage", False)
-    and st.session_state.user_word_count >= TRIAGE_WORD_THRESHOLD
-):
+        with open(file_path, "w") as f:
+            json.dump(triage_payload, f, indent=2)
 
-    # Extract latest user symptom
-    user_symptom = ""
-    for m in reversed(st.session_state["messages"]):
-        if m["role"] == "user":
-            user_symptom = m["content"]
-            break
+        st.switch_page("pages/Triage.py")
 
-    triage_prompt = f"""
-You are an experienced clinical triage assistant.
+        #st.success("✅ Triage data prepared successfully")
 
-Your role is NOT to diagnose diseases.
-Your role is to guide patients on what to do next in a safe, practical, and reassuring manner.
+        # 🔗 Build safe URL (local + cloud)
+        #base_url = st.get_option("browser.serverAddress") or "localhost"
+        #port = st.get_option("server.port")
 
-Think like a doctor explaining next steps to a patient in simple language.
+        #triage_url = (
+            #f"http://{base_url}:{port}/Triage"
+            #f"?session_id={st.session_state.session_id}"
+        
 
--------------------------
-PATIENT CONTEXT
--------------------------
-Patient Message:
-{user_symptom}
-
-Assistant Explanation:
-{st.session_state.last_assistant_reply}
-
--------------------------
-TRIAGE INSTRUCTIONS
--------------------------
-1. Do NOT diagnose or name diseases.
-2. Use simple, non-technical, reassuring language.
-3. Include ONLY sections that are relevant to this case.
-4. If symptoms are mild:
-   - Emphasize reassurance, self-care, and home-based recovery.
-5. If symptoms are moderate:
-   - Emphasize monitoring, supportive care, and when to consider medical advice.
-6. If symptoms are severe:
-   - Clearly explain urgency while maintaining a calm and supportive tone.
-7. Provide practical, actionable recommendations the patient can realistically follow at home.
-8. Home remedies and OTC advice must be conservative, optional, and non-prescriptive.
-9. NEVER give medication dosages or prescription drugs.
-10. Avoid alarming language; focus on reducing anxiety and empowering the patient.
-11. Patient safety is the top priority at all times.
-
--------------------------
-FORMATTING RULES (MANDATORY)
--------------------------
-- Each section title MUST appear on its own line.
-- Content MUST begin on the next line after the title.
-- Use bullet points (-) for all content under each section.
-- NEVER place sentences on the same line as a section title.
-- Do NOT merge headings and sentences.
-- Keep sections visually clean and easy to scan.
+        #st.markdown(
+          #f"""
+          #<a href="/Triage?session_id={st.session_state.session_id}"
+             #target="_blank"
+             #style="
+              # display:inline-block;
+               #margin-top:16px;
+               #font-size:18px;
+               #font-weight:700;
+               #color:#032B63;
+          # ">
+               #👉 Open Standalone Triage Report
+            #</a>
+            #""",
+            #unsafe_allow_html=True
+        #)
 
 
--------------------------
-OUTPUT FORMAT
--------------------------
-
-🩺 Triage Summary
-- 2–3 sentences in plain language.
-
-⚠️ Overall Assessment
-- LOW | MODERATE | NEEDS MEDICAL REVIEW
-- One calm sentence explaining why.
-
-🔍 Key Symptoms Observed
-- Bullet list only.
-
-🏠 Home Care & Natural Remedies (if appropriate)
-- Bullet list of practical actions.
-
-💊 Optional Relief Measures (Optional)
-- Bullet list.
-- No dosages.
-
-💙 Reassurance
-- 1–2 calming, validating sentences.
-
-🕒 What to Expect Over the Next 24–72 Hours
-- Bullet list describing normal progression.
-
-🔔 Important Changes to Watch For
-- Bullet list.
-- Use calm language (no panic).
-
-
-
--------------------------
-FINAL SAFETY LINE (MANDATORY)
--------------------------
-"This information is for general guidance only and not a substitute for professional medical care."
-"""
-
-    triage_result = generate_reply(
-        model_choice,
-        [
-            {
-                "role": "system",
-                "content": "You are an expert hospital clinical triage system. Be clear, calm, medically safe, responsible, and structured."
-            },
-            {"role": "user", "content": triage_prompt},
-        ],
-    )
-
-    st.markdown("### 🩻 Triage Report")
-    st.info(triage_result)
-    st.warning("⚠️ This tool is for informational purposes only and not a medical diagnosis.")
