@@ -448,7 +448,7 @@ for m in st.session_state["messages"]:
         )
 
 # ---------------- TRIAGE READINESS INDICATOR ----------------
-TRIAGE_WORD_THRESHOLD = 500
+TRIAGE_WORD_THRESHOLD = 50
 
 current_words = st.session_state.get("user_word_count", 0)
 progress = min(current_words / TRIAGE_WORD_THRESHOLD, 1.0)
@@ -513,7 +513,7 @@ if user_input:
 
 
 # ---------------- TRIAGE INTRO + BUTTON ----------------
-TRIAGE_WORD_THRESHOLD = 500
+TRIAGE_WORD_THRESHOLD = 50
 
 if (
     "last_assistant_reply" in st.session_state
