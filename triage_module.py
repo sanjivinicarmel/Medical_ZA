@@ -1,5 +1,4 @@
 import html
-from turtle import st
 
 
 def show_triage():
