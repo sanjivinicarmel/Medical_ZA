@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 import json
 import uuid
 import os
+from triage_module import show_triage
+import html as html_lib
+
 
 TRIAGE_DIR = "triage_sessions"
 os.makedirs(TRIAGE_DIR, exist_ok=True)
@@ -12,6 +15,11 @@ os.makedirs(TRIAGE_DIR, exist_ok=True)
 load_dotenv(".env")
 
 st.set_page_config(page_icon="💊", page_title="Medical Assistant", layout="wide")
+
+# This MUST be at the top, right after imports and set_page_config
+if st.session_state.get("page") == "triage":
+    show_triage()
+    st.stop()
 
 # ---------------------------
 # System Prompt
@@ -23,6 +31,8 @@ SYSTEM_PROMPT = (
     "- Give helpful suggestions\n"
     "- Ask one gentle follow-up question\n"
     "- Recommend doctor only if severe/persistent\n"
+    "- IMPORTANT: Do NOT use HTML tags, <div>, or CSS classes in your response.\n "
+    "- Return ONLY plain text or simple bullet points using dashes (-).\n"
     "- End with: 'This is general information and not a substitute for professional medical advice.'"
 )
 
@@ -35,6 +45,15 @@ if "user_word_count" not in st.session_state:
 
 if "show_intro" not in st.session_state:
     st.session_state.show_intro = True
+
+# ---------------- PAGE STATE ----------------
+if "page" not in st.session_state:
+    st.session_state.page = "chatbot"
+
+#if st.session_state.page == "triage":
+   # show_triage()
+    #st.stop()
+
 
 # IMPROVED FULL-WIDTH STYLING
 st.markdown("""
@@ -241,7 +260,7 @@ section[data-testid="stChatInput"] {
 
 # ---------------- LANDING CONTENT ----------------
 st.markdown("""
-<div class="landing-wrapper">
+ <div class="landing-wrapper">
 
 <div class="top-box">
 <h1 class="big-title">🩺 AI Symptom Intake</h1>
@@ -253,6 +272,8 @@ Streamline assessment with AI-powered symptom capture, automated triage reasonin
 and seamless integration into the patient journey.
 </p>
 </div>
+            
+
 
 <div class="green-box">
 <p class="text">
@@ -389,23 +410,34 @@ PATIENT_FILE = "patients.csv"
 if os.path.exists(PATIENT_FILE):
     patients_df = pd.read_csv(PATIENT_FILE)
 
-    st.markdown("### 👤 Select Patient for This Consultation")
+    st.markdown("### 👤 Enter Patient for This Consultation")
 
-    selected_patient = st.selectbox(
-        "Choose Patient",
-        patients_df["patient_name"]
-    )
+    patient_name_input = st.text_input("Enter Patient Name (as in records)")
 
-    # Get selected patient row
-    selected_row = patients_df[
-        patients_df["patient_name"] == selected_patient
-    ].iloc[0]
+    if patient_name_input:
 
-    # Store in session_state
-    st.session_state.selected_patient_id = int(selected_row["patient_id"])
-    st.session_state.selected_patient_name = selected_row["patient_name"]
-    st.session_state.selected_patient_age = selected_row["age"]
-    st.session_state.selected_patient_sex = selected_row["sex"]
+        patient_match = patients_df[
+            patients_df["patient_name"].str.lower() == patient_name_input.strip().lower()
+        ]
+
+        if not patient_match.empty:
+
+            selected_row = patient_match.iloc[0]
+
+            # Store in session_state
+            st.session_state.selected_patient_id = int(selected_row["patient_id"])
+            st.session_state.selected_patient_name = selected_row["patient_name"]
+            st.session_state.selected_patient_age = int(selected_row["age"])
+            st.session_state.selected_patient_sex = selected_row["sex"]
+
+            st.success(
+                f"Patient Found: {st.session_state.selected_patient_name} | "
+                f"Age: {st.session_state.selected_patient_age} | "
+                f"Sex: {st.session_state.selected_patient_sex}"
+            )
+
+        else:
+            st.error("Patient not found in records. Please check spelling.")
 
 else:
     st.error("❌ patients.csv not found.")
@@ -424,31 +456,27 @@ if "triage_answers" not in st.session_state:
 
 
 # ---------------- Render Chat ----------------
+import html as html_lib  # add at top of file
+
+# In your chat render loop:
 for m in st.session_state["messages"]:
     if m["role"] == "system":
         continue
-
     if m["role"] == "user":
+        safe_content = html_lib.escape(m["content"]).replace('\n', '<br>')
         st.markdown(
-            f"""
-            <div class="user-message-box">
-                {m["content"]}
-            </div>
-            """,
+            f'<div class="user-message-box">{safe_content}</div>',
             unsafe_allow_html=True
         )
     else:
+        safe_content = html_lib.escape(m["content"]).replace('\n', '<br>')
         st.markdown(
-            f"""
-            <div class="ai-response-box">
-                {m["content"]}
-            </div>
-            """,
+            f'<div class="ai-response-box">{safe_content}</div>',
             unsafe_allow_html=True
         )
 
 # ---------------- TRIAGE READINESS INDICATOR ----------------
-TRIAGE_WORD_THRESHOLD = 50
+TRIAGE_WORD_THRESHOLD = 15
 
 current_words = st.session_state.get("user_word_count", 0)
 progress = min(current_words / TRIAGE_WORD_THRESHOLD, 1.0)
@@ -513,7 +541,7 @@ if user_input:
 
 
 # ---------------- TRIAGE INTRO + BUTTON ----------------
-TRIAGE_WORD_THRESHOLD = 50
+TRIAGE_WORD_THRESHOLD = 15
 
 if (
     "last_assistant_reply" in st.session_state
@@ -524,6 +552,10 @@ if (
    
     # 🔘 Button (ONLY shown when ready)
     if st.button("🩺 Assess My Triage Summary"):
+
+        if "selected_patient_id" not in st.session_state:
+            st.error("Please enter a valid patient name before proceeding.")
+            st.stop()
 
         # 🔹 Create session_id ONCE
         if "session_id" not in st.session_state:
@@ -538,17 +570,23 @@ if (
             "patient_name": str(st.session_state.selected_patient_name),
             "patient_age": int(st.session_state.selected_patient_age),
             "patient_sex": str(st.session_state.selected_patient_sex)
-    }
+        }
 
-        file_path = os.path.join(
-            TRIAGE_DIR,
-            f"{st.session_state.session_id}.json"
-        )
-
+        file_path = os.path.join(TRIAGE_DIR, f"{st.session_state.session_id}.json")
         with open(file_path, "w") as f:
             json.dump(triage_payload, f, indent=2)
 
-        st.switch_page("pages/Triage.py")
+        st.session_state.page = "triage"
+        st.rerun()  # ← ONLY this, nothing after it
+        
+
+        #st.session_state.page = "triage"
+        #st.rerun()
+
+        # ---------------- LOAD TRIAGE PAGE INTERNALLY ----------------
+        #if st.session_state.page == "triage":
+            #from triage_module import show_triage
+            #show_triage()
 
         #st.success("✅ Triage data prepared successfully")
 
